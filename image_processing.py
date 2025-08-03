@@ -1,8 +1,13 @@
 import cv2
+import pytesseract
 
 Y_THRESH = 15  # Tolerance for y center alignment for grouping boxes into rows
-
-
+CELL_CROP_MARGIN = 0.1 # Margin to crop around the cell to remove the border
+CONFIG_FILE_PATH = r"tesseract_config/wordle.config"
+MIN_CELL_PX = 100 # Minimum cell pixel size to not get enlarged, tesseract works better on larger images
+TARGET_CELL_PX = 150 # Maintaining aspect ratio, the target cell height in pixels
+OCR_CONF_THRESH = 0 # Minimum confidence threshold for OCR to consider the letter valid
+LETTER_AREA_FRAC_THRESH = 0.02 # Minimum area fraction of the cell that the letter should occupy to be considered valid
 
 
 def filter_non_square_contours(cnts):
@@ -97,3 +102,74 @@ def get_wordle_grid_boxes(image):
         return rows
     else:
         return None
+
+
+# For alphabet extraction
+def crop_cell_margin(crop):
+    # Crop a little bit of the image to avoid the border setting off contour detection
+    margin = int(CELL_CROP_MARGIN * min(crop.shape[:2]))
+    crop = crop[margin:-margin, margin:-margin]
+    return crop
+
+
+def tesseract_inference(thresh):
+    pred = pytesseract.image_to_data(
+        thresh,
+        lang="eng",
+        config=f"{CONFIG_FILE_PATH}",
+        output_type=pytesseract.Output.DICT
+    )
+
+    # If no index 5, means no letter was detected
+    if 5 not in pred['level']:
+        return None
+
+    idx = pred['level'].index(5)
+    letter = pred['text'][idx].strip().upper()
+    confidence = int(pred['conf'][idx])
+
+    return letter, confidence
+
+def tesseract_preprocessing(crop):
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+
+    # Resize if needed
+    h, w = crop.shape[:2]
+    if h < MIN_CELL_PX:
+        # Compute scale to resize
+        scale = TARGET_CELL_PX / h
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+
+        gray = cv2.equalizeHist(gray)
+        gray = cv2.resize(gray, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+
+    # Thresholding to create a binary image
+    _, thr = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    # Send the preprocessed image to tesseract
+    res = tesseract_inference(thr)
+    if res is None:
+        return None
+
+    pred, conf = res
+    return pred if conf > OCR_CONF_THRESH else None
+
+def detect_letter(crop):
+    # Get height and width of the cell
+    cell_area = crop.shape[0] * crop.shape[1]
+
+    # Convert image to greyscale
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+
+    # Adaptive thresholding, invert resulting image for morphological operations
+    thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY_INV, blockSize=11, C=3)
+
+    # Find contours
+    cnts, hierarchy = cv2.findContours(thresh, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Filter small cnt based on area and size
+    min_area = cell_area * LETTER_AREA_FRAC_THRESH
+    for cnt in cnts:
+        if cv2.contourArea(cnt) >= min_area:
+            return True
+    return False
