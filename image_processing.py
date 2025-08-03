@@ -1,6 +1,8 @@
 import cv2
 
-y_thresh = 15  # Tolerance for y center alignment
+Y_THRESH = 15  # Tolerance for y center alignment for grouping boxes into rows
+
+
 
 
 def filter_non_square_contours(cnts):
@@ -78,7 +80,7 @@ def get_wordle_grid_boxes(image):
         placed = False
         for row in rows:
             # row[0][5] is the y-center of the first box in that row
-            if abs(row[0][5] - y_center) < y_thresh:
+            if abs(row[0][5] - y_center) < Y_THRESH:
                 row.append((cnt, x, y, w, h, y_center))
                 placed = True
                 break
