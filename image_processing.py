@@ -1,5 +1,6 @@
 import cv2
 import pytesseract
+import numpy as np
 
 Y_THRESH = 15  # Tolerance for y center alignment for grouping boxes into rows
 CELL_CROP_MARGIN = 0.1 # Margin to crop around the cell to remove the border
@@ -150,3 +151,32 @@ def detect_letter(crop):
         if cv2.contourArea(cnt) >= min_area:
             return True
     return False
+
+
+# Extract from Wordle CSS
+WORDLE_CELL_STATE_HEX = {
+    "green":  "#6aaa64",   # correct
+    "yellow": "#c9b458",   # present
+    "grey":   "#939598",   # absent
+    "white":  "#ffffff",   # empty
+}
+
+def hex_to_bgr(h):
+    h = h.lstrip("#")
+    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    return b, g, r
+
+# Precompute a dict of reference BGR vectors for easy lookup
+WORDLE_CELL_STATE_RGB = {
+    name: np.array(hex_to_bgr(h), dtype=np.float32)
+    for name, h in WORDLE_CELL_STATE_HEX.items()
+}
+
+
+def extract_color_from_cell(crop):
+    # Compute mean BGR of the pixels
+    mean_bgr = crop.reshape(-1, 3).mean(axis=0)
+
+    # Calculate Euclidean distance to closest ref color
+    closest_color = min(WORDLE_CELL_STATE_RGB.items(), key=lambda kv: np.linalg.norm(mean_bgr - kv[1]))[0]
+    return closest_color
