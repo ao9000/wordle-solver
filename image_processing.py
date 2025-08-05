@@ -129,7 +129,7 @@ def tesseract_inference(thresh):
     letter = pred['text'][idx].strip().upper()
     confidence = int(pred['conf'][idx])
 
-    return letter, confidence
+    return letter if confidence >= OCR_CONF_THRESH else None
 
 
 def detect_letter(crop):
