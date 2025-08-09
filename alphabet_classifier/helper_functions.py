@@ -8,6 +8,7 @@ import torchvision
 import torch.optim as optim
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
+import cv2
 
 # Model definition
 class MNISTClassifier(nn.Module):
@@ -189,3 +190,10 @@ def plot_loss_graph_ft(history):
     # Save figure to disk
     plt.savefig("models/ft_loss.png")
     plt.close(fig)
+
+
+def wordle_cell_preprocessing(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+
+    return thresh
