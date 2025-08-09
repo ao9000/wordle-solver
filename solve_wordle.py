@@ -14,6 +14,8 @@ state_dict = torch.load("alphabet_classifier/models/finetune_model_100.pth", map
 model.load_state_dict(state_dict)
 model.eval()
 
+transform = transform_handwritten_alphabet_dataset()
+
 image = cv2.imread('images/row 3.PNG')
 
 # Load precomputed pattern dictionary
@@ -55,7 +57,7 @@ if rows:
                     alphabet = Image.fromarray(thresh)
 
                     # Convert to tensor and apply transformations
-                    alphabet_tensor = transform_handwritten_alphabet_dataset()(alphabet)
+                    alphabet_tensor = transform(alphabet)
                     # Add batch dimension
                     alphabet_tensor = alphabet_tensor.unsqueeze(0).to(device)
 
