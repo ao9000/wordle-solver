@@ -10,7 +10,7 @@ from tqdm import tqdm
 def build_pattern_dict(allowed_plus_answers, answers):
     # Create a dict to contain all possible answer patterns for each allowed word
     pattern_dict = { word: defaultdict(set) for word in allowed_plus_answers }
-    for word in tqdm(allowed, desc="Allowed words", unit="word"):
+    for word in tqdm(allowed_plus_answers, desc="Allowed words", unit="word"):
         for ans in answers:
             pattern = validate_guess(word, ans)
             pattern_dict[word][pattern].add(ans)
