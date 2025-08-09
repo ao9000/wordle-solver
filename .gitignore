@@ -2,3 +2,6 @@
 *.idea
 *__pycache__
 *.pkl
+alphabet_classifier/dataset
+alphabet_classifier/finetune_dataset
+alphabet_classifier/finetune_dataset_preprocessed
