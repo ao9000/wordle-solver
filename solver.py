@@ -9,6 +9,13 @@ GUESSES = 6
 GREEN_STATE = 0
 YELLOW_STATE = 1
 GRAY_STATE = 2
+WHITE_STATE = 3
+
+def isValid(color_state):
+    if color_state == GREEN_STATE or color_state == YELLOW_STATE or color_state == GRAY_STATE:
+        return True
+    return False
+
 
 # For ranking guesses, we need to generate all possible patterns
 all_patterns = list(product((GREEN_STATE, YELLOW_STATE, GRAY_STATE), repeat=WORD_LENGTH))

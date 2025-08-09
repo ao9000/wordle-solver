@@ -1,6 +1,7 @@
 import cv2
 import pytesseract
 import numpy as np
+from solver import WHITE_STATE, GREEN_STATE, YELLOW_STATE, GRAY_STATE
 
 Y_THRESH = 15  # Tolerance for y center alignment for grouping boxes into rows
 CELL_CROP_MARGIN = 0.1 # Margin to crop around the cell to remove the border
@@ -173,10 +174,23 @@ WORDLE_CELL_STATE_RGB = {
 }
 
 
+def color_mapper(color_str):
+    color_dict = {
+        "green": GREEN_STATE,
+        "yellow": YELLOW_STATE,
+        "grey": GRAY_STATE,
+        "white": WHITE_STATE
+    }
+
+    return color_dict[color_str]
+
+
 def extract_color_from_cell(crop):
     # Compute mean BGR of the pixels
     mean_bgr = crop.reshape(-1, 3).mean(axis=0)
 
     # Calculate Euclidean distance to closest ref color
     closest_color = min(WORDLE_CELL_STATE_RGB.items(), key=lambda kv: np.linalg.norm(mean_bgr - kv[1]))[0]
-    return closest_color
+
+    # Return the name of the closest color
+    return color_mapper(closest_color)

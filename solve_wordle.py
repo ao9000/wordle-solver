@@ -1,10 +1,20 @@
-from image_processing import get_wordle_grid_boxes, crop_cell_margin, detect_letter, tesseract_inference, extract_color_from_cell
+from image_processing import get_wordle_grid_boxes, crop_cell_margin, detect_letter, extract_color_from_cell
+from alphabet_classifier.helper_functions import MNISTClassifier, wordle_cell_preprocessing, transform_handwritten_alphabet_dataset
 import cv2
 import pickle
 from wordle_wordlists import answers
-from solver import rank_guesses, GUESSES, GRAY_STATE, YELLOW_STATE, GREEN_STATE
+from solver import rank_guesses, GUESSES, GRAY_STATE, YELLOW_STATE, GREEN_STATE, WHITE_STATE, isValid
+from PIL import Image
+import torch
 
-image = cv2.imread('images/row 1 valid.PNG')
+# Load the trained model
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model = MNISTClassifier().to(device)
+state_dict = torch.load("alphabet_classifier/models/finetune_model_100.pth", map_location=device)
+model.load_state_dict(state_dict)
+model.eval()
+
+image = cv2.imread('images/row 3.PNG')
 
 # Load precomputed pattern dictionary
 with open('pattern_dict.pkl', 'rb') as f:
@@ -30,16 +40,39 @@ if rows:
     for i, row in enumerate(wordle_board_imgs):
         for j, cell in enumerate(row):
             if detect_letter(cell.copy()):
-                # Extract letter
-                letter = tesseract_inference(cell.copy())
-                wordle_board_letters[i][j] = letter
                 # Extract color
                 color = extract_color_from_cell(cell.copy())
                 wordle_board_colors[i][j] = color
 
-                # Check if there is any missed OCR letters
-                if letter is None and color != "white":
-                    raise ValueError(f"Detected a color {color} without a letter in cell ({i}, {j}), please retry")
+                if isValid(color):
+                    # Only try to extract letter if the color is valid, because not confirmed guesses are useless
+                    # Better approach is to use the trained CNN model to extract letters
+                    # Extract letter
+                    # Pytorch model inference
+                    # Convert image to binary thresholded image
+                    thresh = wordle_cell_preprocessing(cell.copy())
+
+                    alphabet = Image.fromarray(thresh)
+
+                    # Convert to tensor and apply transformations
+                    alphabet_tensor = transform_handwritten_alphabet_dataset()(alphabet)
+                    # Add batch dimension
+                    alphabet_tensor = alphabet_tensor.unsqueeze(0).to(device)
+
+                    # Inference
+                    with torch.no_grad():
+                        logits = model(alphabet_tensor)
+                        pred = logits.argmax(dim=1).item()
+                        letter = chr(ord('A') + pred)
+
+                        # Get confidence
+                        confidence = torch.max(torch.softmax(logits, dim=1)).item()
+
+                    # Old approach using Tesseract OCR, less accurate
+                    # letter = tesseract_inference(cell.copy())
+
+                    wordle_board_letters[i][j] = letter
+
 
     # Check the level of completed board
     # If any color in a row is white, clear the row
@@ -71,16 +104,10 @@ if rows:
             letters = row["letters"]
             colors = row["colors"]
 
-            # Convert colors to feedback pattern digits
-            feedback_pattern = tuple(
-                GREEN_STATE if color == 'green' else
-                YELLOW_STATE if color == 'yellow' else
-                GRAY_STATE
-                for color in colors
-            )
-
             # Join into string
             guess = ''.join(letters).lower()
+            feedback_pattern = tuple(int(c) for c in colors)
+
             print(f"Guess: {guess}, Feedback: {feedback_pattern}")
 
             # Prune the remaining set
