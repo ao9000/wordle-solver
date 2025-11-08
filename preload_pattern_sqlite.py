@@ -29,7 +29,7 @@ import sqlite3
 from collections import defaultdict
 from tqdm import tqdm
 from wordle_wordlists import allowed, answers, all_possible_words
-from solver import validate_guess
+from solver import validate_guess, GREEN_STATE
 
 
 # Optimization 1: Encode pattern as base-3 integer
@@ -45,6 +45,20 @@ def encode_pattern_to_int(pattern):
     for digit in digits:
         base3_val = base3_val * 3 + int(digit)
     return base3_val
+
+def decode_int_to_pattern(base3_val):
+    digits = []
+    # Extract 5 digits from the base-3 integer, because Wordle pattern len are length 5
+    for _ in range(5):
+        # Get the rightmost digit (remainder when divided by 3)
+        digit = base3_val % 3
+        digits.append(digit)
+        # Remove the rightmost digit (integer division by 3)
+        base3_val //= 3
+
+    # Reverse because we extracted digits from right to left
+    digits.reverse()
+    return tuple(digits)
 
 # Optimization 3: Varint Encoding
 def encode_varint(pattern_idx):
@@ -172,11 +186,11 @@ def build_pattern_db(batch_limit=2000, output_db="pattern_dict.sqlite"):
     conn.commit()
 
     # Create compact schema. Use WITHOUT ROWID for guess_pattern to save space
-    # Words table -> to map word IDs to words (Answer + guesses)
+    # guess table -> to map word IDs to words (Answer + other words = all possible guesses)
     # Answers table -> to map answer IDs to answers
     # guess_pattern table -> Stores which answers produce which patterns for each guess, the main table
     c.executescript("""
-    CREATE TABLE IF NOT EXISTS words (
+    CREATE TABLE IF NOT EXISTS guess (
         id INTEGER PRIMARY KEY,
         word TEXT NOT NULL UNIQUE
     );
@@ -195,7 +209,7 @@ def build_pattern_db(batch_limit=2000, output_db="pattern_dict.sqlite"):
 
     # Insert into answer and words mapping tables
     print("Inserting words and answers...")
-    c.executemany("INSERT OR REPLACE INTO words(id, word) VALUES (?, ?);", [(i, w) for i, w in enumerate(guesses)])
+    c.executemany("INSERT OR REPLACE INTO guess(id, word) VALUES (?, ?);", [(i, w) for i, w in enumerate(guesses)])
     c.executemany("INSERT OR REPLACE INTO answers(id, word) VALUES (?, ?);", [(i, a) for i, a in enumerate(answers_list)])
     conn.commit()
 
@@ -214,7 +228,7 @@ def build_pattern_db(batch_limit=2000, output_db="pattern_dict.sqlite"):
             pattern = validate_guess(guess, ans)
 
             # Optimization 6: Skip all-green pattern as it is trivial
-            if all(p == 0 for p in pattern):
+            if all(p == GREEN_STATE for p in pattern):
                 continue
 
             # Encode tuple of ints into a Base-3 int to save space
