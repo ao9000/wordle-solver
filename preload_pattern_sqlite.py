@@ -22,6 +22,8 @@
 
 # 5. Delta encoding for answer indices
 
+# 6. Remove redundant entries such as all green pattern since that is trivial
+
 
 import sqlite3
 from collections import defaultdict
@@ -188,7 +190,6 @@ def build_pattern_db(batch_limit=2000, output_db="pattern_dict.sqlite"):
         answer_blob BLOB NOT NULL,
         PRIMARY KEY (guess_id, pattern_int)
     ) WITHOUT ROWID;
-    CREATE INDEX IF NOT EXISTS idx_guess ON guess_pattern(guess_id);
     """)
     conn.commit()
 
@@ -211,6 +212,11 @@ def build_pattern_db(batch_limit=2000, output_db="pattern_dict.sqlite"):
             # Get pattern
             # Returns a tuple of ints
             pattern = validate_guess(guess, ans)
+
+            # Optimization 6: Skip all-green pattern as it is trivial
+            if all(p == 0 for p in pattern):
+                continue
+
             # Encode tuple of ints into a Base-3 int to save space
             # For example: (2,2,2,1,2) -> 239
             pattern_base3_int = encode_pattern_to_int(pattern)
