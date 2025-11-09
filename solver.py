@@ -69,7 +69,10 @@ def calculate_shannon_entropy(patter_matrix_counts):
     # Formula: I = Log2(1/p)
     # I = -Log2(p)
     total = sum(patter_matrix_counts)
-    return -sum((c/total) * math.log(c/total) for c in patter_matrix_counts if c > 0)
+    # Base 2 logarithm for bits
+    # Base e logarithm for nats
+    # return -sum((c/total) * math.log(c/total) for c in patter_matrix_counts if c > 0)
+    return -sum((c / total) * math.log2(c / total) for c in patter_matrix_counts if c > 0)
 
 
 # From the calculated pattern dict, rank all choices based on entropy
