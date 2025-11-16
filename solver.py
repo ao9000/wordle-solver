@@ -76,9 +76,14 @@ def calculate_shannon_entropy(patter_matrix_counts):
 
 
 # From the calculated pattern dict, rank all choices based on entropy
+# When you pick a guess, it will have 243 possible patterns (for 5 letter wordle), 5^3
+# We can calculate how many possible answers will yield each possible pattern
+# Then we can calculate the entropy of that guess to determine how much information will be gained by picking that guess
 def rank_guesses(remaining, pattern_dict, top_n=5):
     scores = []
     for g in all_possible_words:
+        print(pattern_dict[g][all_patterns[0]] & remaining)
+        # Loop through all patterns, producing one counts vector per guess
         counts = [len(pattern_dict[g][p] & remaining) for p in all_patterns]
         ent = calculate_shannon_entropy(counts)
         scores.append((g, ent))

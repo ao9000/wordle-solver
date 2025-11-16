@@ -16,7 +16,7 @@ model.eval()
 
 transform = transform_handwritten_alphabet_dataset()
 
-image = cv2.imread('images/row 3.PNG')
+image = cv2.imread('images/row 1.PNG')
 
 # Load precomputed pattern dictionary
 with open('pattern_dict.pkl', 'rb') as f:
@@ -114,9 +114,6 @@ if rows:
 
             # Prune the remaining set
             remaining = remaining.intersection(pattern_dict[guess][feedback_pattern])
-
-            # Print some possible answers
-            print(f"Possible answers ({len(remaining)}): {",".join(remaining)}")
 
             # If possible answer left 1, print the answer
             if len(remaining) == 1:
