@@ -8,14 +8,14 @@ from tqdm import tqdm
 # Updated to follow the original pytorch mnist tutorial hyperparameters
 
 # Think we can afford to train for longer, since wordle basically has no changes, can afford to overfit and still get good results
-train_epochs = 100
+train_epochs = 15
 batch_size=64
 
 random_seed = 42
 torch.backends.cudnn.enabled = False
 torch.manual_seed(random_seed)
 
-ckpt_model_path = "models/pretrain_model_9.pth"
+ckpt_model_path = "models/pretrain_model_14.pth"
 
 wordle_loader = wordle_alphabet_dataset_loader('finetune_dataset_preprocessed',
                                                transform=transform_handwritten_alphabet_dataset(),

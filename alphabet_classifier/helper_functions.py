@@ -117,7 +117,7 @@ def plot_pretrain_accuracy_graph(history):
     # Plot each curve
     plt.plot(epochs, history['train_acc'], label="Train Accuracy", color='blue')
     plt.plot(epochs, history['test_acc'], label="Test Accuracy", color='orange')
-    plt.plot(epochs, history['wordle_test_acc'], label="Sudoku Digits Test Accuracy", color='green')
+    plt.plot(epochs, history['wordle_test_acc'], label="Wordle Alphabets Test Accuracy", color='green')
 
     # Labels, title, legend
     plt.title('Model Accuracy')
