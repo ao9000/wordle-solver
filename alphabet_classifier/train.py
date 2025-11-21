@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 # Constants
 # Updated to follow the original pytorch mnist tutorial hyperparameters
-train_epochs = 14
+train_epochs = 20
 batch_size=64
 
 random_seed = 42

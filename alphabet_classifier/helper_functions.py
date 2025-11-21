@@ -9,6 +9,8 @@ import torch.optim as optim
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MultipleLocator
 import cv2
+import numpy as np
+from PIL import Image
 
 # Model definition
 class MNISTClassifier(nn.Module):
@@ -42,26 +44,115 @@ class MNISTClassifier(nn.Module):
         return output
 
 
+
 def transform_handwritten_alphabet_dataset():
     transform = torchvision.transforms.Compose([
-        # Convert to grayscale
-        torchvision.transforms.Grayscale(num_output_channels=1),  # Convert RGB to single channel
         # Convert to pytorch image tensor
         torchvision.transforms.ToTensor(),
-        # Resize to 28x28
-        torchvision.transforms.Resize((28, 28)),
         # Mean and std of mnist digit dataset
         torchvision.transforms.Normalize((0.11070,), (0.2661,)),
     ])
     return transform
 
 
+def wordle_cell_preprocessing(img):
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+
+    return thresh
+
+def wordle_cells_reduce_noise(alpha_inv):
+    # Eliminate surrounding noise
+    # Detect contours
+    cnts, hierarchy = cv2.findContours(alpha_inv, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    # Relative area threshold
+    # Total area of 28x28 image is 784 pixels
+    total_area = alpha_inv.shape[0] * alpha_inv.shape[1]
+    # Calculate area threshold based on 1% of total area
+    frac = 0.010
+    area_thresh = total_area * frac
+    # Filter contours over 5 pixel square area
+    cnts = [cnt for cnt in cnts if cv2.contourArea(cnt) > area_thresh]
+
+    # Check if any contour is detected
+    if cnts:
+        # Sort to largest contour (Digit)
+        cnt = sorted(cnts, key=lambda x: cv2.contourArea(x), reverse=True)[0]
+        # Get coordinates, width, height of contour
+        x, y, width, height = cv2.boundingRect(cnt)
+
+        # Create buffer for crop
+        crop_buffer = 1
+        # Decrement crop buffer if buffer goes out of bounds of image
+        while (y-crop_buffer) < 0 or (x-crop_buffer) < 0 or (y+height+crop_buffer) > alpha_inv.shape[0] or (x+width+crop_buffer) > alpha_inv.shape[1]:
+            crop_buffer -= 1
+
+            if crop_buffer == 0:
+                break
+
+        # Crop area
+        alpha_inv = alpha_inv[y-crop_buffer:y + height+crop_buffer, x-crop_buffer:x + width+crop_buffer]
+        # Update height & width
+        height = height + (crop_buffer*2)
+        width = width + (crop_buffer*2)
+
+        # Create a black mat
+        new_alpha_inv = np.zeros((28, 28), np.uint8)
+
+        # Standardize all image sizes
+        # Maintain aspect ratio, resize via height or width (Whichever is bigger)
+        resized_target_height_width = 17
+
+        if height > width:
+            # Height is larger
+            aspect_ratio = resized_target_height_width / float(height)
+            new_dimensions = (int(width * aspect_ratio), resized_target_height_width)
+        else:
+            # Width is larger
+            aspect_ratio = resized_target_height_width / float(width)
+            new_dimensions = (resized_target_height_width, int(height * aspect_ratio))
+
+        # Don't allow any dimension to be 0, will result in error
+        if new_dimensions[0] <= 3 or new_dimensions[1] <= 3:
+            new_dimensions = (resized_target_height_width, resized_target_height_width)
+
+        # Check if original image is larger is smaller
+        if height > resized_target_height_width:
+            # Shrink
+            alpha_inv = cv2.resize(alpha_inv, new_dimensions, interpolation=cv2.INTER_AREA)
+        else:
+            # Expand
+            alpha_inv = cv2.resize(alpha_inv, new_dimensions, interpolation=cv2.INTER_CUBIC)
+
+        # Update width & height
+        height, width = alpha_inv.shape
+
+        # Paste detected contour in the middle to center image
+        new_alpha_inv[14-height//2:14-height//2+height, 14-width//2:14-width//2+width] = alpha_inv
+
+        return new_alpha_inv
+    else:
+        # No contour detected
+        return None
+
+
 def handwritten_alphabet_dataset_loader(root_dir, train, transform, batch_size):
+    def loader(img_path):
+        img = cv2.imread(img_path)
+        alpha_thresh = wordle_cell_preprocessing(img)
+        denoised_alpha = wordle_cells_reduce_noise(alpha_thresh)
+        if denoised_alpha is not None:
+            return Image.fromarray(denoised_alpha)
+        raise RuntimeError("Bad data")
+
+
     split = 'train' if train else 'test'
     data_path = os.path.join(root_dir, split)
     # ImageFolder will assign class indices 0–25 in alphabetical order of folder names (A=0, B=1, … Z=25)
     dataset = ImageFolder(
         data_path,
+        loader=loader,
         transform=transform
     )
     return DataLoader(dataset,
@@ -70,13 +161,27 @@ def handwritten_alphabet_dataset_loader(root_dir, train, transform, batch_size):
                       pin_memory=True)
 
 
+def wordle_alphabet_dataset_loader(dataset_path, transform, batch_size):
+    def loader(img_path):
+        img = cv2.imread(img_path)
+        alpha_thresh = wordle_cell_preprocessing(img)
+        denoised_alpha = wordle_cells_reduce_noise(alpha_thresh)
+        if denoised_alpha is not None:
+            return Image.fromarray(denoised_alpha)
+        raise RuntimeError("Bad data")
 
-def wordle_alphabet_dataset_loader(root_dir, transform, batch_size):
-    dataset = ImageFolder(root_dir, transform=transform)
-    return DataLoader(dataset,
+    test_dataset = ImageFolder(
+        root=dataset_path,
+        loader=loader,
+        transform=transform,
+    )
+
+    # Return all data
+    return DataLoader(test_dataset,
                       batch_size=batch_size,
                       shuffle=True,
-                      pin_memory=True)
+                      pin_memory=True,
+                      )
 
 
 def build_model(optimizer_name, **kwargs):
@@ -160,6 +265,7 @@ def plot_accuracy_graph_ft(history):
 
     # Plot each curve
     plt.plot(epochs, history['train_acc'], label="Wordle Train Accuracy", color='blue')
+    plt.plot(epochs, history['test_acc'], label="Wordle Test Accuracy", color='orange')
 
     # Labels, title, legend
     plt.title('Fine-tuning Model Accuracy')
@@ -180,6 +286,7 @@ def plot_loss_graph_ft(history):
 
     # Plot each curve
     plt.plot(epochs, history['train_loss'], label="Wordle Train Loss", color='blue')
+    plt.plot(epochs, history['test_loss'], label="Wordle Test Loss", color='orange')
 
     # Labels, title, legend
     plt.title('Fine-tuning Model Loss')
@@ -190,10 +297,3 @@ def plot_loss_graph_ft(history):
     # Save figure to disk
     plt.savefig("models/ft_loss.png")
     plt.close(fig)
-
-
-def wordle_cell_preprocessing(img):
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
-
-    return thresh

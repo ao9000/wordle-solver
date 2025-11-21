@@ -21,6 +21,11 @@ wordle_loader = wordle_alphabet_dataset_loader('finetune_dataset_preprocessed',
                                                transform=transform_handwritten_alphabet_dataset(),
                                                batch_size=batch_size)
 
+wordle_loader_test = wordle_alphabet_dataset_loader('finetune_dataset_test_preprocessed',
+                                               transform=transform_handwritten_alphabet_dataset(),
+                                               batch_size=batch_size)
+
+
 # Building model
 model, optimizer = build_model(
     optimizer_name="adadelta",
@@ -39,8 +44,8 @@ print(model)
 history = {
     "train_loss": [],
     "train_acc": [],
-    # "wordle_test_acc": [], # My own test set
-    # "wordle_test_loss": [],
+    "test_acc": [],
+    "test_loss": [],
 }
 
 def train_one_epoch(model, optimizer, train_loader, epoch):
@@ -137,10 +142,11 @@ if __name__ == "__main__":
     # Run training
     for epoch in range(1, train_epochs+1):
         train_one_epoch(model, optimizer, wordle_loader, epoch)
-        # print("Test set")
-        # loss, acc = test(model, test_loader)
-        # history['test_loss'].append(loss)
-        # history['test_acc'].append(acc)
+
+        print("Test set")
+        loss, acc = test(model, wordle_loader_test)
+        history['test_loss'].append(loss)
+        history['test_acc'].append(acc)
 
     # Generate training graphs
     print("Saving graphs")
