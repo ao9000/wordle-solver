@@ -3,7 +3,9 @@ import pytesseract
 import numpy as np
 from solver import WHITE_STATE, GREEN_STATE, YELLOW_STATE, GRAY_STATE
 
-Y_THRESH = 15  # Tolerance for y center alignment for grouping boxes into rows
+Y_THRESH = 0.05  # Tolerance for y center alignment, 5% of the cell height will be taken into reference
+REF_THRESH = 0.1 # Tolerance for reference row filtering
+Y_CONSISTENCY_THRESH = 0.05 # Tolerance for vertical spacing consistency check
 CELL_CROP_MARGIN = 0.1 # Margin to crop around the cell to remove the border
 CONFIG_FILE_PATH = r"tesseract_config/wordle.config"
 MIN_CELL_PX = 80 # Minimum cell pixel size to not get enlarged, tesseract works better on larger images
@@ -73,21 +75,26 @@ def get_wordle_grid_boxes(image):
         cy = y + h / 2
         boxes.append((cnt, x, y, w, h, cy))
 
+    if not boxes:
+        return None
+
     # Attributes of each box in boxes
     # cnt = Contour obj, x = top left corner of cnt, y = top left corner of cnt,
     # w = width of cnt, h = height of cnt, cy = y center of cnt
 
     # Extract the y axis center of each box, group them into rows
-    # If less than 15 pixels apart, consider them in the same row
+    # If less than 5% of cell height pixels apart, consider them in the same row
+    # Calculate 5% of average cell height
+    avg_cell_height = np.mean([h for _, _, _, w, h, _ in boxes])
+    y_thresh_px = Y_THRESH * avg_cell_height
 
-    rows = []
     # Sort boxes by their y center, group them into rows
     # First box will be placed in a new row, subsequent boxes will be mapped to the closest row via threshold
+    rows = []
     for cnt, x, y, w, h, y_center in sorted(boxes, key=lambda b: b[5]):
         placed = False
         for row in rows:
-            # row[0][5] is the y-center of the first box in that row
-            if abs(row[0][5] - y_center) < Y_THRESH:
+            if abs(row[0][5] - y_center) < y_thresh_px:
                 row.append((cnt, x, y, w, h, y_center))
                 placed = True
                 break
@@ -95,10 +102,70 @@ def get_wordle_grid_boxes(image):
             rows.append([(cnt, x, y, w, h, y_center)])
 
     # If image is noisy, we might have more than 6 rows, so we filter them to 5x6 wordle format
-    # Keep only rows which has 5 boxes in them
+    # Check 1: Keep only rows which has 5 boxes in them
     rows = [r for r in rows if len(r) == 5]
 
-    if len(rows) == 6:
+    # Check 2: Take the first row as reference row
+    # Main aim is to differentiate from keyboard rows and other noise
+    # Compare other rows to it, keep only those rows with similar attributes
+    # Attributes to compare: average cell area, average x & y length
+    if len(rows) > 1:
+        ref_row = rows[0]
+        # Calculate reference row attributes
+        ref_avg_width = np.mean([b[3] for b in ref_row])
+        ref_avg_height = np.mean([b[4] for b in ref_row])
+        ref_avg_area = ref_avg_width * ref_avg_height
+
+        filtered_rows = [ref_row]
+        for row in rows[1:]:  # Start from second row
+            avg_width = np.mean([b[3] for b in row])
+            avg_height = np.mean([b[4] for b in row])
+            avg_area = avg_width * avg_height
+
+            # Check if dimensions are within 10% of reference
+            width_ratio = avg_width / ref_avg_width
+            height_ratio = avg_height / ref_avg_height
+            area_ratio = avg_area / ref_avg_area
+
+            if (1 - REF_THRESH <= width_ratio <= 1 + REF_THRESH and
+                    1 - REF_THRESH <= height_ratio <= 1 + REF_THRESH and
+                    1 - REF_THRESH <= area_ratio <= 1 + REF_THRESH):
+                filtered_rows.append(row)
+
+        rows = filtered_rows
+
+    # Check 3: Keep only consecutive rows with consistent spacing
+    if len(rows) > 1:
+        # Start with first row
+        filtered_rows = [rows[0]]
+
+        for i in range(len(rows) - 1):
+            current_y = np.mean([b[5] for b in rows[i]])
+            next_y = np.mean([b[5] for b in rows[i + 1]])
+            spacing = next_y - current_y
+
+            # If this is not the first spacing, check consistency
+            if len(filtered_rows) > 1:
+                # Calculate average spacing of rows already in filtered list
+                prev_spacings = []
+                for j in range(len(filtered_rows) - 1):
+                    prev_y = np.mean([b[5] for b in filtered_rows[j]])
+                    next_prev_y = np.mean([b[5] for b in filtered_rows[j + 1]])
+                    prev_spacings.append(next_prev_y - prev_y)
+
+                avg_spacing = np.mean(prev_spacings)
+
+                # Check if current spacing is consistent
+                if (1 - Y_CONSISTENCY_THRESH <= spacing / avg_spacing <= 1 + Y_CONSISTENCY_THRESH):
+                    filtered_rows.append(rows[i + 1])
+                else:
+                    break  # Stop at first inconsistency
+            else:
+                # First spacing, just add the next row
+                filtered_rows.append(rows[i + 1])
+        rows = filtered_rows
+
+    if 6 >= len(rows) >= 1:
         # Sort them by x pos to get the correct order of boxes in each row
         rows = [sorted(row, key=lambda b: b[1]) for row in rows]
         return rows
