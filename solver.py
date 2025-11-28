@@ -82,7 +82,7 @@ def calculate_shannon_entropy(patter_matrix_counts):
 def rank_guesses(remaining, pattern_dict, top_n=5):
     scores = []
     for g in all_possible_words:
-        print(pattern_dict[g][all_patterns[0]] & remaining)
+        # print(pattern_dict[g][all_patterns[0]] & remaining)
         # Loop through all patterns, producing one counts vector per guess
         counts = [len(pattern_dict[g][p] & remaining) for p in all_patterns]
         ent = calculate_shannon_entropy(counts)

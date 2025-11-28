@@ -3,6 +3,7 @@ import pickle
 from solver import GUESSES, rank_guesses, GRAY_STATE, YELLOW_STATE, GREEN_STATE, WORD_LENGTH, validate_guess
 import statistics
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 
 # Load the pattern dict from a pickle file
@@ -13,7 +14,7 @@ with open('pattern_dict.pkl', 'rb') as f:
 end_turns = []
 failed_words = []
 
-for ans in answers:
+for ans in tqdm(answers, desc="Benchmarking all answers", unit="word"):
     # Define the set of all possible answers
     remaining = set(answers)
 
@@ -23,7 +24,7 @@ for ans in answers:
             guess = next(iter(remaining))
         else:
             if turn_num == 0:
-                guess = 'soare'  # Use a fixed first guess to reduce processing time
+                guess = 'tares'  # Use a fixed first guess to reduce processing time
             else:
                 # Rank the guesses based on the remaining candidates
                 guess = rank_guesses(remaining, pattern_dict, 1)[0][0]

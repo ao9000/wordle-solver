@@ -2338,3 +2338,6 @@ gofer
 kefir
 knell
 matte
+gizmo
+tinge
+colic
