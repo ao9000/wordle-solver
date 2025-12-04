@@ -79,6 +79,11 @@ with open('wordle_stats.txt', 'w') as fout:
         fout.write(f"  {word}: {turns}\n")
     fout.write("\nAll end_turns values:\n")
     fout.write(", ".join(map(str, end_turns)))
+    # Write failed words
+    if failed_words:
+        fout.write("\n\nFailed words:\n")
+        for word in failed_words:
+            fout.write(f"  {word}\n")
 print("Saved stats and raw data to wordle_stats.txt")
 
 # Plot distribution of turns

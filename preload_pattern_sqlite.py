@@ -24,12 +24,33 @@
 
 # 6. Remove redundant entries such as all green pattern since that is trivial
 
+# 7. Zlib compression for large blobs only
+# Zlib has a header overhead of about ~8 bytes, so dont compress small blobs where overhead outweighs savings
+# Total blobs: 1278668
+# Average: 29.8 bytes
+# Median: 7 bytes
+# Min: 1 bytes
+# Max: 1568 bytes
+# Percentiles:
+#   50th: 7 bytes
+#   75th: 23 bytes
+#   90th: 67 bytes
+#   95th: 133 bytes
+#   99th: 383 bytes
+# Estimated avg row size: 44.8 bytes
+
+# 8. Increased page size from default 4096 to 8192 bytes
+# 4kb is 300mb, 8kb is 244 mb, 16kb is 221mb, 32kb is 219mb
+# We choose 16384 due to new appstore regulations of supporting devices with 16kb page size
+# Phone has to load entire page into memory when accessing db, so cannot be too large to eat up all memory
+
 
 import sqlite3
 from collections import defaultdict
 from tqdm import tqdm
 from wordle_wordlists import allowed, answers, all_possible_words
 from solver import validate_guess, GREEN_STATE
+import zlib
 
 
 # Optimization 1: Encode pattern as base-3 integer
@@ -161,10 +182,39 @@ def decode_delta(deltas):
     return indices
 
 
+def zlib_compress(indices):
+    # First encode as varint
+    uncompressed = pack_indices_varint(indices)
+
+    # Then compress with zlib at maximum compression level
+    compressed = zlib.compress(uncompressed, level=9)
+
+    return compressed
+
+
+def hybrid_zlib_and_pack_indices_varint(indices):
+    varint_blob = pack_indices_varint(indices)
+
+    threshold = 64 # Compress only if blob is >= threshold bytes
+    min_savings = 4 # Minimum savings to commit to compression, this is to consider zlib tradeoff
+    blob_size = len(varint_blob)
+    # Only compress if blob is >= 80 bytes
+    if blob_size >= threshold:
+        compressed = zlib.compress(varint_blob, level=9)
+
+        # Check if compression is effective
+        if len(compressed) < blob_size - min_savings:
+            return compressed, 1
+
+    return varint_blob, 0
+
+
 def build_pattern_db(batch_limit=2000, output_db="pattern_dict.sqlite"):
     # Get lists of possible words (possible guesses + answers) list
     guesses = list(all_possible_words)
+
     answers_list = list(answers)
+    # answers_list = list(all_possible_words)
 
     # Optimization 2: Encode answers to indexes
     answers_map = {a: i for i, a in enumerate(answers_list)}
@@ -178,6 +228,10 @@ def build_pattern_db(batch_limit=2000, output_db="pattern_dict.sqlite"):
     # Create connection and cursor to sqlite3 DB
     conn = sqlite3.connect(output_db)
     c = conn.cursor()
+
+    # # Reduced page size for more savings from default 4096
+    c.execute("PRAGMA page_size = 16384;")
+    # conn.commit()
 
     # Performance pragmas for bulk insert
     c.execute("PRAGMA journal_mode = WAL;")
@@ -201,10 +255,26 @@ def build_pattern_db(batch_limit=2000, output_db="pattern_dict.sqlite"):
     CREATE TABLE IF NOT EXISTS guess_pattern (
         guess_id INTEGER NOT NULL,
         pattern_int INTEGER NOT NULL,
+        is_compressed INTEGER NOT NULL,
         answer_blob BLOB NOT NULL,
         PRIMARY KEY (guess_id, pattern_int)
     ) WITHOUT ROWID;
     """)
+
+    # # If only have 1 table, aka answer and guess are the same, we can optimize further by merging both tables
+    # c.executescript("""
+    # CREATE TABLE IF NOT EXISTS guess (
+    #     id INTEGER PRIMARY KEY,
+    #     word TEXT NOT NULL UNIQUE
+    # );
+    # CREATE TABLE IF NOT EXISTS guess_pattern (
+    #     guess_id INTEGER NOT NULL,
+    #     pattern_int INTEGER NOT NULL,
+    #     is_compressed INTEGER NOT NULL,
+    #     answer_blob BLOB NOT NULL,
+    #     PRIMARY KEY (guess_id, pattern_int)
+    # ) WITHOUT ROWID;
+    # """)
     conn.commit()
 
     # Insert into answer and words mapping tables
@@ -214,7 +284,7 @@ def build_pattern_db(batch_limit=2000, output_db="pattern_dict.sqlite"):
     conn.commit()
 
     # Insert into guess_pattern table
-    insert_sql = "INSERT OR REPLACE INTO guess_pattern(guess_id, pattern_int, answer_blob) VALUES (?, ?, ?);"
+    insert_sql = "INSERT OR REPLACE INTO guess_pattern(guess_id, pattern_int, is_compressed, answer_blob) VALUES (?, ?, ?, ?);"
     to_insert = []
 
     # Create the core pattern DB by building a 1 level tree of patterns based on each word in allowed validating against all answers
@@ -245,8 +315,16 @@ def build_pattern_db(batch_limit=2000, output_db="pattern_dict.sqlite"):
             ans_idx_list = encode_delta(ans_idx_list)
 
             # Pack indices into blob
-            blob = pack_indices_varint(ans_idx_list)
-            to_insert.append((guess_id, pattern_base3_int, sqlite3.Binary(blob)))
+            # No compression
+            # blob = pack_indices_varint(ans_idx_list)
+            
+            # # Use zlib compression
+            # blob = zlib_compress(ans_idx_list)
+
+            # Use smart compression, only compress large blobs
+            blob, is_compressed = hybrid_zlib_and_pack_indices_varint(ans_idx_list)
+
+            to_insert.append((guess_id, pattern_base3_int, is_compressed, sqlite3.Binary(blob)))
 
         # flush in batches
         if len(to_insert) >= batch_limit:
