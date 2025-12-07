@@ -8,7 +8,7 @@ from tqdm import tqdm
 # Updated to follow the original pytorch mnist tutorial hyperparameters
 
 # Think we can afford to train for longer, since wordle basically has no changes, can afford to overfit and still get good results
-train_epochs = 15
+train_epochs = 20
 batch_size=64
 
 random_seed = 42
