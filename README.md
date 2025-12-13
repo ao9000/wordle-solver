@@ -199,6 +199,9 @@ The optimized SQLite database uses three tables:
 
 ---
 
+## Assets download
+Due to file size limitations, the prebuilt pattern database and CNN model weights can be downloaded externally [here](https://drive.google.com/file/d/1IsWij0uMrEu032Q-_LwIpSgjJCtkYLe6/view?usp=sharing)
+
 ## References
 1. 3Blue1Brown. (2022, February 6). Solving Wordle using information theory [Video recording]. https://www.youtube.com/watch?v=v68zYyaEmEA
 
